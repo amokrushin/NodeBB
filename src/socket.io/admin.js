@@ -277,7 +277,7 @@ function getHourlyStatsForSet(set, hour, numHours, callback) {
 
 		hoursArr.reverse();
 		hoursArr.forEach(function(hour, idx) {
-			termsArr.push(terms[hour]);
+			termsArr.push(parseInt(terms[hour]));
 		});
 
 		callback(null, termsArr);
