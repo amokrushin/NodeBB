@@ -27,6 +27,11 @@ define('forum/chats', ['components', 'string', 'sounds', 'forum/infinitescroll',
 		Chats.scrollToBottom($('.expanded-chat ul'));
 
 		Chats.initialised = true;
+
+		if (ajaxify.data.hasOwnProperty('meta') && ajaxify.data.meta.hasOwnProperty('uid')) {
+			// This is an active chat, focus on the input box
+			components.get('chat/input').focus();
+		}
 	};
 
 	Chats.getRecipientUid = function() {
@@ -93,8 +98,6 @@ define('forum/chats', ['components', 'string', 'sounds', 'forum/infinitescroll',
 			if (prev.length) {
 				Chats.switchChat(parseInt(prev.attr('data-uid'), 10), prev.attr('data-username'));
 			}
-
-			$('[component="chat/input"]').focus();
 		});
 		Mousetrap.bind('ctrl+down', function() {
 			var activeContact = $('.chats-list .bg-primary'),
@@ -103,8 +106,6 @@ define('forum/chats', ['components', 'string', 'sounds', 'forum/infinitescroll',
 			if (next.length) {
 				Chats.switchChat(parseInt(next.attr('data-uid'), 10), next.attr('data-username'));
 			}
-
-			$('[component="chat/input"]').focus();
 		});
 		Mousetrap.bind('up', function(e) {
 			if (e.target === components.get('chat/input').get(0)) {
@@ -188,18 +189,24 @@ define('forum/chats', ['components', 'string', 'sounds', 'forum/infinitescroll',
 	};
 
 	Chats.switchChat = function(uid, username) {
-		if (!$('[component="chat/messages"]').length) {
+		if (!$('#content [component="chat/messages"]').length) {
 			return ajaxify.go('chats/' + utils.slugify(username));
 		}
 
 		var contactEl = $('.chats-list [data-uid="' + uid + '"]');
 
 		Chats.loadChatSince(uid, $('.chat-content'), 'recent');
-		Chats.addSendHandlers(uid, $('[component="chat/input"]'), $('[data-action="send"]'));
-		contactEl.addClass('bg-primary').siblings().removeClass('bg-primary');
-		$('[component="chat/title"]').text(username);
-		$('[component="chat/messages"]').attr('data-uid', uid).attr('data-username', username);
-		$('[component="breadcrumb/current"]').text(username);
+		Chats.addSendHandlers(uid, components.get('chat/input'), $('[data-action="send"]'));
+
+		contactEl
+			.removeClass('unread')
+			.addClass('bg-primary')
+			.siblings().removeClass('bg-primary');
+
+		components.get('chat/title').text(username);
+		components.get('chat/messages').attr('data-uid', uid).attr('data-username', username);
+		components.get('breadcrumb/current').text(username);
+		components.get('chat/input').focus();
 
 		if (window.history && window.history.pushState) {
 			var url = 'chats/' + utils.slugify(username);
@@ -268,18 +275,22 @@ define('forum/chats', ['components', 'string', 'sounds', 'forum/infinitescroll',
 				Chats.appendChatMessage($('.expanded-chat .chat-content'), data.message);
 			} else {
 				var contactEl = $('[component="chat/recent"] li[data-uid="' + data.withUid + '"]'),
-					userKey = data.withUid === data.message.fromuid ? 'fromUser' : 'toUser';
+					userKey = parseInt(data.withUid, 10) === parseInt(data.message.fromuid, 10) ? 'fromUser' : 'toUser';
 
 				// Spawn a new contact if required
-				templates.parse('partials/chat_contact', {
-					uid: data.withUid,
-					username: data.message[userKey].username,
-					status: data.message[userKey].status,
-					picture: data.message[userKey].picture,
-					teaser: {
-						content: data.message.cleanedContent,
-						timestampISO: new Date(Date.now()).toISOString()
-					}
+				templates.parse('partials/chat_contacts', {
+					contacts: [{
+						uid: data.message[userKey].uid,
+						username: data.message[userKey].username,
+						status: data.message[userKey].status,
+						picture: data.message[userKey].picture,
+						'icon:text': data.message[userKey]['icon:text'],
+						'icon:bgColor': data.message[userKey]['icon:bgColor'],
+						teaser: {
+							content: data.message.cleanedContent,
+							timestampISO: new Date(Date.now()).toISOString()
+						}
+					}]
 				}, function(html) {
 					translator.translate(html, function(translatedHTML) {
 						if (contactEl.length) {
@@ -412,7 +423,9 @@ define('forum/chats', ['components', 'string', 'sounds', 'forum/infinitescroll',
 	Chats.parseMessage = function(data, callback) {
 		templates.parse('partials/chat_message' + (Array.isArray(data) ? 's' : ''), {
 			messages: data
-		}, callback);
+		}, function(html) {
+			translator.translate(html, callback);
+		});
 	};
 
 	function loadMoreRecentChats() {
